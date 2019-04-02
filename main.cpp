@@ -86,7 +86,7 @@ separable_conv2d_6_internal_1_W = clCreateBuffer(context,
 
 //initOcl()
 
-const int COUNT = 119;
+const int COUNT = 77;
 int initOcl()
 {
 const char * kernelSourceString[COUNT] = {
@@ -108,13 +108,26 @@ const char * kernelSourceString[COUNT] = {
 "      const float value = 0.0f;\n",
 "      int h_out = get_global_id(0); //H_OUT\n",
 "      int w_out = get_global_id(1); //W_OUT\n",
+"      int h;\n",
+"          h = h_out;\n",
+"      int w;\n",
 "      \n",
-"      int h = h_out - PT;\n",
-"      int w = w_out - PL;\n",
-"      \n",
-"      for (int c = 0; c < C; c++) {\n",
-"          float element = ((0 <= h) && (h < H) && (0 <= w) && (w < W)) ? in[LINEAR_3(h, w, c, W, C)] : value;\n",
-"          out[LINEAR_3(h_out, w_out, c, W_OUT, C)] = element;\n",
+//"      \n",
+"#define MULTIPLE\n",
+"#ifdef MULTIPLE\n",
+"      for (int wmultiple = 1; wmultiple <= 7; ++wmultiple) {\n",
+"          w = (w_out * wmultiple);\n",
+"#else\n",
+"          w = w_out;\n",
+"      {\n",
+"#endif\n",
+"          int a = 0 <= h && h <= H && 0 <= w && w <= W ;\n",
+"          int ii = LINEAR_3(h, w, 0, W_OUT, C);\n",
+"          int oi = LINEAR_3(h, w, 0, W, C);\n",
+"          out[ii] = a ? in[oi] : value;\n",
+"          out[ii + 1] = a ? in[oi + 1] : value;\n",
+"          out[ii + 2] = a ? in[oi + 2] : value;\n",
+"          out[ii + 3] = a ? in[oi + 3] : value;\n",
 "      }\n",
 "  }\n",
 "  __kernel void separable_conv2d_6_internal_1(\n",
@@ -150,60 +163,6 @@ const char * kernelSourceString[COUNT] = {
 "                  {\n",
 "                      int c_out = c * DEPTH_MULTIPLIER + m;\n",
 "                      out[LINEAR_3(x_out_1, x_out_2, c_out, W_OUT, C_OUT)] += weights[LINEAR_4(iw, jw, c, m, KW, C_IN, DEPTH_MULTIPLIER)] * in[LINEAR_3(x_1, x_2, c, W, C_IN)];\n",
-"                  }\n",
-"              }\n",
-"          }\n",
-"      }\n",
-"  }\n",
-"  __kernel void separable_conv2d_6_internal_2(\n",
-"    __global const float *in,\n",
-"    __global float *out,\n",
-"    __global float *weights)\n",
-"  {\n",
-"      const int W = 80;\n",
-"      const int C_IN = 12;\n",
-"      const int C_OUT = 3;\n",
-"      const int W_OUT = 80;\n",
-"      const int SH = 1;\n",
-"      const int SW = 1;\n",
-"      const int KH = 1;\n",
-"      const int KW = 1;\n",
-"  \n",
-"      int x_out_1 = get_global_id(0);\n",
-"      int x_out_2 = get_global_id(1);\n",
-"  \n",
-"      int ix = x_out_1 * SH;\n",
-"      int jx = x_out_2 * SW;\n",
-"      for (int iw = 0; iw < KH; iw++)\n",
-"      {\n",
-"          int x_1 = ix + iw;\n",
-"          for (int jw = 0; jw < KW; jw++)\n",
-"          {\n",
-"              int x_2 = jx + jw;\n",
-"              for (int kw = 0; kw < C_IN; kw++)\n",
-"              {\n",
-"                  float4 x_in = (float4) in[LINEAR_3(x_1, x_2, kw, W, C_IN)];\n",
-"                  int lw;\n",
-"                  for (lw = 0; lw < C_OUT - 3; lw += 4)\n",
-"                  {\n",
-"                      float4 w, y, x_out;\n",
-"                      int w_index = LINEAR_4(iw, jw, kw, lw, KW, C_IN, C_OUT);\n",
-"                      w = (float4) (weights[w_index], weights[w_index+1], weights[w_index+2], weights[w_index+3]);\n",
-"                      y = x_in * w;\n",
-"                      int out_index = LINEAR_3(x_out_1, x_out_2, lw, W_OUT, C_OUT);\n",
-"                      x_out.xyzw = (float4) (out[out_index], out[out_index+1], out[out_index+2], out[out_index+3]);\n",
-"                      x_out = x_out + y;\n",
-"                      out[out_index+0] = x_out.x;\n",
-"                      out[out_index+1] = x_out.y;\n",
-"                      out[out_index+2] = x_out.z;\n",
-"                      out[out_index+3] = x_out.w;\n",
-"                  }\n",
-"                  for (; lw < C_OUT; lw++)\n",
-"                  {\n",
-"                      int w_index = LINEAR_4(iw, jw, kw, lw, KW, C_IN, C_OUT);\n",
-"                      float w = weights[w_index];\n",
-"                      int out_index = LINEAR_3(x_out_1, x_out_2, lw, W_OUT, C_OUT);\n",
-"                      out[out_index] += x_in.x * w;\n",
 "                  }\n",
 "              }\n",
 "          }\n",
@@ -285,33 +244,39 @@ void cnn(cl_mem in_0, cl_mem out_0)
   INTERNAL_CNN_STOPWATCH("OpPadding (separable_conv2d_6_internal_0)")
   {
     {
-        size_t localWorkSize[2] = {1, 1};
-        size_t globalWorkSize[2] = {121, 161};
-
         cl_kernel layer;
-        char a[] = "separable_conv2d_6_internal_0";
-        createKernel(&program, &layer, a);
-
-        if ( in_0 == NULL || x0 == NULL) {
-            printf("Given memObjects are null in separable_conv2d_6_internal_0.\n");
-            exit(-1);
-        }
-        errNum = clSetKernelArg(layer, 0, sizeof(cl_mem), (void *) &in_0);
-        errNum |= clSetKernelArg(layer, 1, sizeof(cl_mem), (void *) &x0);
-
-        if (errNum != CL_SUCCESS) {
-            printf("Error setting Kernel Arguments in separable_conv2d_6_internal_0.\n");
-            exit(-1);
-        }
-        // enqueue and wait for processing to end
-        errNum = clEnqueueNDRangeKernel(commandQueue, layer, 2,
-                                        NULL, globalWorkSize,
-                                        localWorkSize, 0, NULL,
-                                        NULL);
-        if (errNum != 0)
+        size_t localWorkSize[2] = {1, 1};
+        size_t globalWorkSize[2] = {121, (161/7) };
+        INTERNAL_CNN_STOPWATCH("OpPadding 1")
         {
-          printf("Error Status %d in clEnqueueNDRangeKernelseparable_conv2d_6_internal_0\n", errNum);
-          exit(-1);
+
+            char a[] = "separable_conv2d_6_internal_0";
+            createKernel(&program, &layer, a);
+
+            if (in_0 == NULL || x0 == NULL) {
+                printf("Given memObjects are null in separable_conv2d_6_internal_0.\n");
+                exit(-1);
+            }
+            errNum = clSetKernelArg(layer, 0, sizeof(cl_mem), (void *) &in_0);
+            errNum |= clSetKernelArg(layer, 1, sizeof(cl_mem), (void *) &x0);
+
+            if (errNum != CL_SUCCESS) {
+                printf("Error setting Kernel Arguments in separable_conv2d_6_internal_0.\n");
+                exit(-1);
+            }
+        }
+        INTERNAL_CNN_STOPWATCH("OpPadding 2")
+        {
+            // enqueue and wait for processing to end
+            errNum = clEnqueueNDRangeKernel(commandQueue, layer, 2,
+                                            NULL, globalWorkSize,
+                                            localWorkSize, 0, NULL,
+                                            NULL);
+            if (errNum != 0) {
+                printf("Error Status %d in clEnqueueNDRangeKernelseparable_conv2d_6_internal_0\n", errNum);
+                exit(-1);
+            }
+            clFinish(commandQueue);
         }
     }
   }
@@ -359,11 +324,11 @@ void cnn(cl_mem in_0, cl_mem out_0)
 int main()
 {
     const int IN_DIM = 57600;
-    const int OUT_DIM = 480;
+    const int OUT_DIM = IN_DIM;
     const int NUM_RUNS = 1;
 
-    alignas(16) float in[IN_DIM];
-    alignas(16) float out[OUT_DIM];
+    float in[IN_DIM];
+    float out[OUT_DIM];
 
     // read image
     FILE *f = fopen("img_0.bin", "r");
@@ -422,10 +387,9 @@ int main()
     }
 
     printf("values:");
-    for (int i = 0; i <= 481; ++i)
+    for (int i = 0; i < OUT_DIM; ++i)
     {
         std::cout << i << " " << out[i] << std::endl;
-        ++i;
     }
     printf("\n");
 
