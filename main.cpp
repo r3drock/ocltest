@@ -213,7 +213,7 @@ void cnn(cl_mem in_0, cl_mem out_0, size_t dim)
 
 int main()
 {
-    const int size = 300;
+    const int size = 50;
     const int stepsize = 1;
 
 
@@ -278,7 +278,7 @@ int main()
             free(in);
             free(out);
         }
-        printf("IN_DIM:%4.d TIME:%7.d TIME_PER_ELEMENT:%5.d\n", IN_DIM, min(IN_DIM), min(IN_DIM) / IN_DIM);
+        printf("IN_DIM: %4.d TIME: %7.d TIME_PER_ELEMENT: %5.d\n", IN_DIM, min(IN_DIM), min(IN_DIM) / IN_DIM);
         total_elapsed += min(IN_DIM);
     }
 
