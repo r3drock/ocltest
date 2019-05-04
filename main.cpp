@@ -56,11 +56,11 @@ int initOcl()
 {
 const char * kernelSourceString[COUNT] = {
 "  __kernel void testkernel(\n",
-"    __global const float *in,\n",
-"    __global float *out)\n",
+"    __global const int *in,\n",
+"    __global int *out)\n",
 "  {\n",
 "      int index = get_global_id(0); //H_OUT\n",
-"      float temp = in[index];\n",
+"      int temp = in[index];\n",
 "      temp *= 2.0f;\n",
 "      out[index] = temp;\n",
 "  }\n"
@@ -172,39 +172,39 @@ void cnn(cl_mem in_0, cl_mem out_0, size_t dim)
 
 int main()
 {
-    const int size = 50;
+    const int size = 5000;
     const int stepsize = 1;
 
     if (initOcl()) {
         fprintf(stderr,"Failed InitOcl\n");
         exit(-1);
     }
-    //initclmemobjects();
-    float *in;
-    float *out;
+    int *in;
+    int *out;
     size_t IN_DIM;
     size_t OUT_DIM;
     int total_elapsed = 0;
-    for (OUT_DIM = IN_DIM = 1; IN_DIM <= size; OUT_DIM = IN_DIM += stepsize) {
+    for (OUT_DIM = IN_DIM = 4900; IN_DIM <= size; OUT_DIM = IN_DIM += stepsize) {
+        
         for (int j = 0; j < 10; ++j) {
-            in = (float *) malloc(IN_DIM * sizeof(float));
-            out = (float *) malloc(OUT_DIM * sizeof(float));
+            in = (int *) malloc(IN_DIM * sizeof(int));
+            out = (int *) malloc(OUT_DIM * sizeof(int));
 
             for (size_t i = 0; i < IN_DIM; i++) {
-                in[i] = static_cast<float>(i);
+                in[i] = static_cast<int>(i);
             }
             cl_mem cl_in;
             cl_mem cl_out;
             cl_in = clCreateBuffer(context,
                                    CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                   IN_DIM * sizeof(float), in, &errNum);
+                                   IN_DIM * sizeof(int), in, &errNum);
             cl_out = clCreateBuffer(context,
                                     CL_MEM_READ_WRITE,
-                                    OUT_DIM * sizeof(float), NULL, &errNum);
+                                    OUT_DIM * sizeof(int), NULL, &errNum);
 
             // reset out
             for (size_t i = 0; i < OUT_DIM; i++) {
-                out[i] = 0.0f;
+                out[i] = 0;
             }
 
             // run function
@@ -217,7 +217,7 @@ int main()
                                          cl_out,
                                          CL_TRUE,
                                          0,
-                                         OUT_DIM * sizeof(float),
+                                         OUT_DIM * sizeof(int),
                                          out,
                                          0,
                                          NULL,
@@ -234,11 +234,11 @@ int main()
             free(in);
             free(out);
         }
-        printf("IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(IN_DIM), min(IN_DIM) / IN_DIM);
+        //printf("IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(IN_DIM), min(IN_DIM) / IN_DIM);
         total_elapsed += min(IN_DIM);
     }
 
-    //printf("time: %d nano seconds\nsize: %d\naverage: %d nano seconds/run\n", total_elapsed, IN_DIM - 1, total_elapsed/IN_DIM);
+    printf("time: %d milli seconds\nsize: %d\naverage: %d nano seconds/run\n", total_elapsed /1000000, IN_DIM - 1, total_elapsed/IN_DIM);
 
     return 0;
 }
