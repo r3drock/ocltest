@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <sys/time.h>
+#include <iostream>
 
 std::map<std::string, std::vector<int> > stopwatch_timings;
 std::map<std::string, std::chrono::steady_clock::time_point> start_times;
@@ -48,23 +49,40 @@ cl_int errNum;
 cl_context context;
 cl_command_queue commandQueue;
 cl_program program;
+cl_program programfloat4;
 
 int min(int index);
 
 const int COUNT = 9;
+const int COUNT2 = 10;
+
 int initOcl()
 {
-const char * kernelSourceString[COUNT] = {
-"  __kernel void testkernel(\n",
-"    __global const float *in,\n",
-"    __global float *out)\n",
-"  {\n",
-"      int index = get_global_id(0); //H_OUT\n",
-"      float temp = in[index];\n",
-"      temp *= 2.0f;\n",
-"      out[index] = temp;\n",
-"  }\n"
-};
+  const char * kernelSourceString[COUNT] = {
+  "  __kernel void testkernel(\n",
+  "    __global const int *in,\n",
+  "    __global int *out)\n",
+  "  {\n",
+  "      int index = get_global_id(0); //H_OUT\n",
+  "      int temp = in[index];\n",
+  "      temp *= 2.0f;\n",
+  "      out[index] = temp;\n",
+  "  }\n"
+  };
+  
+  const char * float4SourceString[COUNT2] = {
+  "__kernel void convolute(\n",
+  "	__global const float4 * in, \n",
+  "	__global float4 * out,\n",
+  ")\n",
+  "\n",
+  "      int index = get_global_id(0); //H_OUT\n",
+  "      float4 temp = in[index];\n",
+  "      temp *= 2.0f;\n",
+  "      out[index] = temp;\n",
+  "  }\n"
+  };
+
 
   cl_uint dev_cnt = 0;
   clGetPlatformIDs(0, 0, &dev_cnt);
@@ -73,7 +91,13 @@ const char * kernelSourceString[COUNT] = {
   clGetPlatformIDs(dev_cnt, platform_ids, NULL);
 
   cl_device_id device_id;
-  errNum = clGetDeviceIDs(platform_ids[0], CL_DEVICE_TYPE_GPU, 1, &device_id, NULL);
+  cl_device_id device_ids[10];
+  errNum = clGetDeviceIDs(platform_ids[0], CL_DEVICE_TYPE_ALL, 10, device_ids, NULL);
+  device_id = device_ids[0];
+
+  for (int i = 0; i < 10; i++)  {
+	  std::cout << device_ids[i] << std::endl;
+  }
   if (errNum != CL_SUCCESS)
   {
     printf("Error: Failed to create a device group!\n");
@@ -97,6 +121,12 @@ const char * kernelSourceString[COUNT] = {
   program = clCreateProgramWithSource(context, COUNT, (const char **) kernelSourceString, NULL, &errNum);
 
   if (!program)
+  {
+    printf("Error: Failed to create compute program!\n");
+    return EXIT_FAILURE;
+  }
+  programfloat4 = clCreateProgramWithSource(context, COUNT2, (const char **) float4SourceString, NULL, &errNum);
+  if (!programfloat4)
   {
     printf("Error: Failed to create compute program!\n");
     return EXIT_FAILURE;
@@ -172,26 +202,28 @@ void cnn(cl_mem in_0, cl_mem out_0, size_t dim)
 
 int main()
 {
-    const int size = 50;
+    const int size = 500;
     const int stepsize = 1;
+
 
     if (initOcl()) {
         fprintf(stderr,"Failed InitOcl\n");
         exit(-1);
     }
     //initclmemobjects();
-    float *in;
-    float *out;
+    cl_int *in;
+    cl_int *out;
     size_t IN_DIM;
     size_t OUT_DIM;
     int total_elapsed = 0;
-    for (OUT_DIM = IN_DIM = 1; IN_DIM <= size; OUT_DIM = IN_DIM += stepsize) {
-        for (int j = 0; j < 10; ++j) {
-            in = (float *) malloc(IN_DIM * sizeof(float));
-            out = (float *) malloc(OUT_DIM * sizeof(float));
+
+	for (OUT_DIM = IN_DIM = 1; IN_DIM <= size; OUT_DIM = IN_DIM += stepsize) {
+		for (int j = 0; j < 10; ++j) {
+            in = (cl_int *) malloc(IN_DIM * sizeof(cl_int));
+            out = (cl_int *) malloc(OUT_DIM * sizeof(cl_int));
 
             for (size_t i = 0; i < IN_DIM; i++) {
-                in[i] = static_cast<float>(i);
+                in[i] = static_cast<cl_int>(i);
             }
             cl_mem cl_in;
             cl_mem cl_out;
@@ -242,6 +274,7 @@ int main()
 
     return 0;
 }
+
 int min(int index) {
     int min {INT32_MAX};
     for (size_t i = 0; i < stopwatch_timings[std::to_string(index).c_str()].size(); ++i) {
