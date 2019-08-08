@@ -18,7 +18,7 @@ W = df[['Index']]
 W = np.array(W)
 X = df[['Time']]
 X = np.array(X)
-Y = df[['TimePerElement']]
+Y = df[['Time4']]
 Y = np.array(Y)
 
 host = host_subplot(111, axes_class=AA.Axes)
@@ -28,20 +28,13 @@ par1 = host.twinx()
 par2 = host.twinx()
 
 offset = 0
-new_fixed_axis = par2.get_grid_helper().new_fixed_axis
-par2.axis["right"] = new_fixed_axis(loc="right", axes=par2,
-                                        offset=(offset, 0))
-
-par2.axis["right"].toggle(all=True)
 
 host.set_xlabel("Size")
 host.set_ylabel("Time")
 par2.set_ylabel("Time")
 
-p1, = host.plot(W, X, label="all")
-p2, = par1.plot(W, Y, label="element")
-
-par2.set_ylim(0, Y[0])
+p1, = host.plot(W, X, label="einzeln")
+p2, = par1.plot(W, Y, label="float4")
 
 host.legend()
 
