@@ -53,15 +53,48 @@ cl_program programfloat4;
 
 int min(int index, int f4);
 
-const int COUNT2 = 42;
+const int COUNT2 = 126;
+cl_float4 weightsfloat4[9] = {
+	(cl_float4) {0.11711525917053223f,
+		0.2533043324947357f,
+		-0.1808098554611206f,
+		-0.022508807480335236f},
+	(cl_float4) {-0.6649995446205139f,
+		0.09314073622226715f,
+		-0.003124025883153081f,
+		0.017212042585015297f},
+	(cl_float4) {-0.00145575066562742f,
+		-0.013053400442004204f,
+		0.023538049310445786f,
+		-0.00013999752991367131f},
+	(cl_float4) {-0.007973596453666687f,
+		-0.0006502429023385048f,
+		0.0026328787207603455f,
+		-0.5550334453582764f},
+	(cl_float4) {0.3889226019382477f,
+		-0.11613842099905014f,
+		0.2719026505947113f,
+		0.3205232620239258f},
+	(cl_float4) {0.056865300983190536f,
+		-0.11111960560083389f,
+		0.22497615218162537f,
+		-0.30552172660827637f},
+	(cl_float4) {-0.2547873556613922f,
+		0.05941327288746834f,
+		-0.5109447836875916f,
+		0.046159517019987106f},
+	(cl_float4) {0.32608509063720703f,
+		0.09823229908943176f,
+		0.040836017578840256f,
+		0.022866737097501755f},
+	(cl_float4) {-0.033735278993844986f,
+		-0.050256337970495224f,
+		-0.025790197774767876f,
+		0.042403850704431534f}};
 
 #define LINEAR_3(i1, i2, i3, d2, d3) ((i1) * (d2) * (d3) + (i2) * (d3) + (i3))
 #define LINEAR_4(i1, i2, i3, i4, d2, d3, d4) ((i1) * (d2) * (d3) * (d4) + (i2) * (d3) * (d4) + (i3) * (d4) + (i4))
 //separable_conv2d_6_internal_1
-
-void conv_serial_cpu()
-{
-}
 
 void sepconv_serial_cpu()
 {	
@@ -166,6 +199,83 @@ int initOcl()
 	const char * kernelSourceString[COUNT2] = {
 		"#define LINEAR_3(i1, i2, i3, d2, d3) ((i1) * (d2) * (d3) + (i2) * (d3) + (i3))\n",
 		"#define LINEAR_4(i1, i2, i3, i4, d2, d3, d4) ((i1) * (d2) * (d3) * (d4) + (i2) * (d3) * (d4) + (i3) * (d4) + (i4))\n",
+		"__kernel void conv(\n",
+		"  __global const float *in,\n",
+		"  __global float *out,\n",
+		"  __global float *weights)\n",
+		"{\n",
+		"	const int H = 60;\n",
+		"	const int W = 80; const int C_IN = 3; const int C_OUT = 8; const int H_OUT = 60; const int W_OUT = 80;\n",
+		"	const int SH = 1; const int SW = 1;\n",
+		"	const int KH = 1; const int KW = 1;\n",
+		"	\n",
+		"	const int IN_OFFSET = 0;\n",
+		"	const int OUT_OFFSET = 0;\n",
+		" \n",
+		"	int x_out_1 = get_global_id(0);\n",
+		"	int x_out_2 = get_global_id(1);\n",
+		"	int ix = x_out_1 * SH;\n",
+		"	int jx = x_out_2 * SW;\n",
+		"	for (int iw = 0; iw < KH; iw++)\n",
+		"	{\n",
+		"		int x_1 = ix + iw;\n",
+		"		for (int jw = 0; jw < KW; jw++)\n",
+		"		{\n",
+		"			int x_2 = jx + jw;\n",
+		"			for (int kw = 0; kw < C_IN; kw++)\n",
+		"			{\n",
+		"				float x_in = in[LINEAR_3(x_1, x_2, kw, W, C_IN) + IN_OFFSET];\n",
+		"				int lw;\n",
+		"				for (; lw < C_OUT; lw++)\n",
+		"				{\n",
+		"					int w_index = LINEAR_4(iw, jw, kw, lw, KW, C_IN, C_OUT);\n",
+		"					float w = weights[w_index];\n",
+		"					int out_index = LINEAR_3(x_out_1, x_out_2, lw, W_OUT, C_OUT) + OUT_OFFSET;\n",
+		"					out[out_index] += x_in * w;\n",
+		"				}\n",
+		"			}\n",
+		"		}\n",
+		"	}\n",
+		"}\n",
+		"	__kernel void float4conv(\n",
+		"  __global const float *in,\n",
+		"  __global float4 *out,\n",
+		"  __global float4 *weights)\n",
+		"{\n",
+		"	const int H = 60;\n",
+		"	const int W = 80; const int C_IN = 3; const int C_OUT = 8; const int H_OUT = 60; const int W_OUT = 80;\n",
+		"	const int SH = 1; const int SW = 1;\n",
+		"	const int KH = 1; const int KW = 1;\n",
+		"	\n",
+		"	const int IN_OFFSET = 0;\n",
+		"	const int OUT_OFFSET = 0;\n",
+		" \n",
+		"	int x_out_1 = get_global_id(0);\n",
+		"	int x_out_2 = get_global_id(1);\n",
+		"	int ix = x_out_1 * SH;\n",
+		"	int jx = x_out_2 * SW;\n",
+		"	for (int iw = 0; iw < KH; iw++)\n",
+		"	{\n",
+		"		int x_1 = ix + iw;\n",
+		"		for (int jw = 0; jw < KW; jw++)\n",
+		"		{\n",
+		"			int x_2 = jx + jw;\n",
+		"			for (int kw = 0; kw < C_IN; kw++)\n",
+		"			{\n",
+		"				float4 x_in = (float4) in[LINEAR_3(x_1, x_2, kw, W, C_IN) + IN_OFFSET];\n",
+		"				int lw;\n",
+		"				for (lw = 0; lw < C_OUT - 3; lw += 4)\n",
+		"				{\n",
+		"					float4 y, x_out;\n",
+		"					int w_index = LINEAR_4(iw, jw, kw, lw, KW, C_IN, C_OUT) /4;\n",
+		"					y = x_in * weights[w_index];\n",
+		"					int out_index = LINEAR_3(x_out_1, x_out_2, lw, W_OUT, C_OUT) + OUT_OFFSET /4;\n",
+		"					out[out_index] = out[out_index] + y;\n",
+		"				}\n",
+		"			}\n",
+		"		}\n",
+		"	}\n",
+		"}\n",
 		"__kernel void sepconv_serial(\n",
 		"  __global const float *in,\n",
 		"  __global float *out,\n",
@@ -240,7 +350,7 @@ int initOcl()
 
 	if (!program)
 	{
-		printf("Error: Failed to create compute program! errnum: %d\n", errNum);
+		printf("Error: Failed to create compute program! errnum: %d COUNT2: %d kernelSourceString: %lu\n", errNum, COUNT2, sizeof(kernelSourceString[0]));
 		return EXIT_FAILURE;
 	}
 
@@ -467,6 +577,4 @@ int min(int index, int f4) {
 	return avg;
 	return min;
 }
-
-
 
