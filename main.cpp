@@ -53,7 +53,7 @@ cl_program programfloat4;
 
 int min(int index, int f4);
 
-const int COUNT2 = 126;
+const int COUNT2 = 119;
 cl_float4 weightsfloat4[9] = {
 	(cl_float4) {0.11711525917053223f,
 		0.2533043324947357f,
@@ -348,9 +348,13 @@ int initOcl()
 
 	program = clCreateProgramWithSource(context, COUNT2, (const char **) kernelSourceString, NULL, &errNum);
 
+
 	if (!program)
 	{
 		printf("Error: Failed to create compute program! errnum: %d COUNT2: %d kernelSourceString: %lu\n", errNum, COUNT2, sizeof(kernelSourceString[0]));
+		for (int i = 0; i < COUNT2; i++)
+			if (kernelSourceString[i] == NULL)
+				printf("%d is NULL.\n", i);
 		return EXIT_FAILURE;
 	}
 
