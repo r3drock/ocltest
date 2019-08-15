@@ -1,3 +1,15 @@
+#define LINEAR_3(i1, i2, i3, d2, d3) ((i1) * (d2) * (d3) + (i2) * (d3) + (i3))
+#define LINEAR_4(i1, i2, i3, i4, d2, d3, d4) ((i1) * (d2) * (d3) * (d4) + (i2) * (d3) * (d4) + (i3) * (d4) + (i4))
+#ifdef __clang__
+#define FORCE_INLINE __attribute__((always_inline))
+#elif __gnuc__
+#define FORCE_INLINE __attribute__((always_inline)) inline
+#elif _MSC_VER
+#define FORCE_INLINE __forceinline
+#else
+#define FORCE_INLINE /* inline */
+#endif
+
 #include <iostream>
 #include <map>
 #include <vector>
@@ -8,6 +20,8 @@
 #include <cstdio>
 #include <sys/time.h>
 #include <iostream>
+#include <assert.h>
+#include <string.h>
 
 std::map<std::string, std::vector<int> > stopwatch_timings;
 std::map<std::string, std::chrono::steady_clock::time_point> start_times;
@@ -41,6 +55,17 @@ void stop_timing(const char* identifier)
 	stopwatch_timings[identifier].push_back(duration);
 }
 
+FORCE_INLINE void COPY(void *dest, const void *src, int n, int method)
+{
+	if (method == 0)
+	{        
+		memcpy(dest, src, n);
+	}
+	else
+	{
+		assert(0);
+	}
+}
 #define CNN_STOPWATCH(name) for(bool _start = true; (_start ? start_timing(name) : stop_timing(name)), _start; _start = false)
 
 // includes
@@ -51,67 +76,77 @@ cl_command_queue commandQueue;
 cl_program program;
 cl_program programfloat4;
 
+int min(char* s1, int f4);
 int min(int index, int f4);
 
-const int COUNT2 = 119;
-cl_float4 weightsfloat4[9] = {
-	(cl_float4) {0.11711525917053223f,
-		0.2533043324947357f,
-		-0.1808098554611206f,
-		-0.022508807480335236f},
-	(cl_float4) {-0.6649995446205139f,
-		0.09314073622226715f,
-		-0.003124025883153081f,
-		0.017212042585015297f},
-	(cl_float4) {-0.00145575066562742f,
-		-0.013053400442004204f,
-		0.023538049310445786f,
-		-0.00013999752991367131f},
-	(cl_float4) {-0.007973596453666687f,
-		-0.0006502429023385048f,
-		0.0026328787207603455f,
-		-0.5550334453582764f},
-	(cl_float4) {0.3889226019382477f,
-		-0.11613842099905014f,
-		0.2719026505947113f,
-		0.3205232620239258f},
-	(cl_float4) {0.056865300983190536f,
-		-0.11111960560083389f,
-		0.22497615218162537f,
-		-0.30552172660827637f},
-	(cl_float4) {-0.2547873556613922f,
-		0.05941327288746834f,
-		-0.5109447836875916f,
-		0.046159517019987106f},
-	(cl_float4) {0.32608509063720703f,
-		0.09823229908943176f,
-		0.040836017578840256f,
-		0.022866737097501755f},
-	(cl_float4) {-0.033735278993844986f,
-		-0.050256337970495224f,
-		-0.025790197774767876f,
-		0.042403850704431534f}};
+void conv2dcpu(float* in_, float* out_, float* weights_)
+{
+	// OpConvolution2D
+	const int W = 80; const int C_IN = 3; const int C_OUT = 8; const int H_OUT = 60; const int W_OUT = 80;
+	const int SH = 1; const int SW = 1;
+	const int KH = 1; const int KW = 1;
 
-#define LINEAR_3(i1, i2, i3, d2, d3) ((i1) * (d2) * (d3) + (i2) * (d3) + (i3))
-#define LINEAR_4(i1, i2, i3, i4, d2, d3, d4) ((i1) * (d2) * (d3) * (d4) + (i2) * (d3) * (d4) + (i3) * (d4) + (i4))
+	for (int x_out_1 = 0; x_out_1 < H_OUT; x_out_1++)
+	{
+		int ix = x_out_1 * SH;
+		for (int x_out_2 = 0; x_out_2 < W_OUT; x_out_2++)
+		{
+			int jx = x_out_2 * SW;
+			alignas(16) float out_tmp[C_OUT];
+			COPY(&out_tmp, &out_[LINEAR_3(x_out_1, x_out_2, 0, W_OUT, C_OUT)], C_OUT * sizeof(float), 0);
+			int tempout = LINEAR_3(x_out_1, x_out_2, 0, W_OUT, C_OUT);
+			for (int iw = 0; iw < KH; iw++)
+			{
+				int x_1 = ix + iw;
+				for (int jw = 0; jw < KW; jw++)
+				{
+					int x_2 = jx + jw;
+					for (int kw = 0; kw < C_IN; kw++)
+					{
+						int tempin = LINEAR_3(x_1, x_2, kw, W, C_IN);
+						__m128 x_in = _mm_load_ps1(&in_[tempin]);
+						for (int lw = 0; lw < C_OUT; lw += 4)
+						{
+							int w_index = LINEAR_4(iw, jw, kw, lw, KW, C_IN, C_OUT);
+							//printf("cpu out: %d in: %d weights: %d\n", tempout + lw, tempin, w_index);
+							//						    printf("in[%d]: %f * weights[%d]: %f = %f\n", tempin,
+							//in_[tempin], w_index, weights_[w_index],
+							//in_[tempin] * weights_[w_index]);
+
+							__m128 w = _mm_load_ps(&weights_[w_index]);
+							__m128 y = _mm_mul_ps(x_in, w);
+							__m128 x_out = _mm_load_ps(&out_tmp[lw]);
+							x_out = _mm_add_ps(x_out, y);
+							_mm_store_ps(&out_tmp[lw], x_out);
+						}
+					}
+				}
+			}
+			COPY(&out_[LINEAR_3(x_out_1, x_out_2, 0, W_OUT, C_OUT)], &out_tmp, C_OUT * sizeof(float), 0);
+		}
+	}
+}
+
+const int COUNT2 = 120;
+float conv2d_11_internal_1_W[] = {1.2337225675582886f,-0.5368690490722656f,0.7839080691337585f,-1.8163790702819824f,0.9831442832946777f,-0.17836132645606995f,-0.41197478771209717f,0.8647937774658203f,-0.019595712423324585f,0.2376221865415573f,-1.819101333618164f,-0.6625561118125916f,0.13829778134822845f,2.1014888286590576f,-0.6704091429710388f,-0.6757892966270447f,-0.43060117959976196f,-0.9187846183776855f,-1.4585297107696533f,-1.9717609882354736f,0.19287244975566864f,2.419645309448242f,1.6170377731323242f,0.49752122163772583f};
 //separable_conv2d_6_internal_1
 
 void sepconv_serial_cpu()
 {	
 	const int H = 121;
-    const int W = 161;				
-    const int C_IN = 3;				
-    const int C_OUT = 12;			
-    const int W_OUT = 80;			
-    const int SH = 2;				
-    const int SW = 2;				
-    const int KH = 3;				
-    const int KW = 3;				
-    const int DEPTH_MULTIPLIER = 4;	
-    
-    const int IN_OFFSET = 0;
-    const int OUT_OFFSET = 0;
- 
+	const int W = 161;				
+	const int C_IN = 3;				
+	const int C_OUT = 12;			
+	const int W_OUT = 80;			
+	const int SH = 2;				
+	const int SW = 2;				
+	const int KH = 3;				
+	const int KW = 3;				
+	const int DEPTH_MULTIPLIER = 4;	
+
+	const int IN_OFFSET = 0;
+	const int OUT_OFFSET = 0;
+
 	for (int ix = 0; ix < H - KH + 1; ix += SH)
 	{
 		int x_out_1 = ix / SH;
@@ -201,8 +236,8 @@ int initOcl()
 		"#define LINEAR_4(i1, i2, i3, i4, d2, d3, d4) ((i1) * (d2) * (d3) * (d4) + (i2) * (d3) * (d4) + (i3) * (d4) + (i4))\n",
 		"__kernel void conv(\n",
 		"  __global const float *in,\n",
-		"  __global float *out,\n",
-		"  __global float *weights)\n",
+		"  __global const float *weights,\n",
+		"  __global float *out)\n",
 		"{\n",
 		"	const int H = 60;\n",
 		"	const int W = 80; const int C_IN = 3; const int C_OUT = 8; const int H_OUT = 60; const int W_OUT = 80;\n",
@@ -224,13 +259,12 @@ int initOcl()
 		"			int x_2 = jx + jw;\n",
 		"			for (int kw = 0; kw < C_IN; kw++)\n",
 		"			{\n",
-		"				float x_in = in[LINEAR_3(x_1, x_2, kw, W, C_IN) + IN_OFFSET];\n",
-		"				int lw;\n",
-		"				for (; lw < C_OUT; lw++)\n",
+		"				float x_in = in[LINEAR_3(x_1, x_2, kw, W, C_IN)];\n",
+		"				for (int lw = 0; lw < C_OUT; lw++)\n",
 		"				{\n",
 		"					int w_index = LINEAR_4(iw, jw, kw, lw, KW, C_IN, C_OUT);\n",
 		"					float w = weights[w_index];\n",
-		"					int out_index = LINEAR_3(x_out_1, x_out_2, lw, W_OUT, C_OUT) + OUT_OFFSET;\n",
+		"					int out_index = LINEAR_3(x_out_1, x_out_2, lw, W_OUT, C_OUT);\n",
 		"					out[out_index] += x_in * w;\n",
 		"				}\n",
 		"			}\n",
@@ -239,8 +273,8 @@ int initOcl()
 		"}\n",
 		"	__kernel void float4conv(\n",
 		"  __global const float *in,\n",
-		"  __global float4 *out,\n",
-		"  __global float4 *weights)\n",
+		"  __global const float4 *weights,\n",
+		"  __global float4 *out)\n",
 		"{\n",
 		"	const int H = 60;\n",
 		"	const int W = 80; const int C_IN = 3; const int C_OUT = 8; const int H_OUT = 60; const int W_OUT = 80;\n",
@@ -262,15 +296,19 @@ int initOcl()
 		"			int x_2 = jx + jw;\n",
 		"			for (int kw = 0; kw < C_IN; kw++)\n",
 		"			{\n",
-		"				float4 x_in = (float4) in[LINEAR_3(x_1, x_2, kw, W, C_IN) + IN_OFFSET];\n",
+		"				float4 x_in = (float4) in[LINEAR_3(x_1, x_2, kw, W, C_IN)];\n",
 		"				int lw;\n",
 		"				for (lw = 0; lw < C_OUT - 3; lw += 4)\n",
 		"				{\n",
 		"					float4 y, x_out;\n",
-		"					int w_index = LINEAR_4(iw, jw, kw, lw, KW, C_IN, C_OUT) /4;\n",
+		"					int w_index = (LINEAR_4(iw, jw, kw, lw, KW, C_IN, C_OUT)) /4;\n",
 		"					y = x_in * weights[w_index];\n",
-		"					int out_index = LINEAR_3(x_out_1, x_out_2, lw, W_OUT, C_OUT) + OUT_OFFSET /4;\n",
-		"					out[out_index] = out[out_index] + y;\n",
+		"					int out_index = (LINEAR_3(x_out_1, x_out_2, lw, W_OUT, C_OUT)) /4;\n",
+		"					/*printf(\"gpu(%d,%d) out[%05d] : %.1f in[%05d] weights[%02d] in[%d]: %f * weights[%d]: %f = %f\\n\",",
+		"								x_out_1, x_out_2, out_index, out[out_index].x, LINEAR_3(x_1, x_2, kw, W, C_IN), w_index, LINEAR_3(x_1, x_2, kw, W, C_IN),\n",
+		"								x_in.x, w_index, weights[w_index].x,\n"
+			"								y.x);*/\n"
+			"					out[out_index] = out[out_index] + y;\n",
 		"				}\n",
 		"			}\n",
 		"		}\n",
@@ -278,8 +316,8 @@ int initOcl()
 		"}\n",
 		"__kernel void sepconv_serial(\n",
 		"  __global const float *in,\n",
-		"  __global float *out,\n",
-		"  __global float *weights)\n",
+		"  __global float *weights,\n",
+		"  __global float *out)\n",
 		"{\n",
 		"	const int W = 161;				\n",
 		"	const int C_IN = 3;				\n",
@@ -316,7 +354,7 @@ int initOcl()
 		"		}\n",
 		"	}\n",
 		"}\n"
-		};
+	};
 
 
 	cl_uint dev_cnt = 0;
@@ -329,7 +367,7 @@ int initOcl()
 	const int chosendevice = 0;
 	int retval = 0;
 	if ((retval = chooseDevice(platform_ids, chosendevice, &device_id))) {
-			return(retval);
+		return(retval);
 	}
 
 	context = clCreateContext(0, 1, &device_id, NULL, NULL, &errNum);
@@ -389,8 +427,8 @@ void cnn(cl_mem in_0, cl_mem weights, cl_mem out_0, size_t dim, cl_program * pro
 	{
 		{
 			cl_kernel layer;
-			size_t localWorkSize[1] = {1};
-			size_t globalWorkSize[1] = {dim};
+			const size_t localWorkSize[2] = {1,1};
+			const size_t globalWorkSize[2] = {60, 80};
 			{
 
 				createKernel(prog, &layer, name);
@@ -418,10 +456,9 @@ void cnn(cl_mem in_0, cl_mem weights, cl_mem out_0, size_t dim, cl_program * pro
 			}
 			{
 				// enqueue and wait for processing to end
-				errNum = clEnqueueNDRangeKernel(commandQueue, layer, 1,
-						NULL, globalWorkSize,
-						localWorkSize, 0, NULL,
-						NULL);
+				errNum = clEnqueueNDRangeKernel(commandQueue, layer, 2,
+						NULL, globalWorkSize, localWorkSize,
+						0, NULL, NULL);
 				if (errNum != 0) {
 					printf("Error Status %d in clEnqueueNDRangeKerneltestkernel\n", errNum);
 					exit(-1);
@@ -432,66 +469,48 @@ void cnn(cl_mem in_0, cl_mem weights, cl_mem out_0, size_t dim, cl_program * pro
 	}
 }
 
-void cnn(cl_mem in_0, cl_mem out_0, size_t dim, cl_program * prog, char* name)
-{
-	{
-		{
-			cl_kernel layer;
-			size_t localWorkSize[1] = {1};
-			size_t globalWorkSize[1] = {dim};
-			{
 
-				createKernel(prog, &layer, name);
-
-				if (in_0 == NULL) {
-					printf("Given input memObject is null in %s.\n", name);
-					exit(-1);
-				}
-				if (out_0 == NULL) {
-					printf("Given output memObject is null in %s.\n", name);
-					exit(-1);
-				}
-				errNum = clSetKernelArg(layer, 0, sizeof(cl_mem), (void *) &in_0);
-				errNum |= clSetKernelArg(layer, 1, sizeof(cl_mem), (void *) &out_0);
-
-				if (errNum != CL_SUCCESS) {
-					printf("Error setting Kernel Arguments in %s.\n", name);
-					exit(-1);
-				}
-			}
-			{
-				// enqueue and wait for processing to end
-				errNum = clEnqueueNDRangeKernel(commandQueue, layer, 1,
-						NULL, globalWorkSize,
-						localWorkSize, 0, NULL,
-						NULL);
-				if (errNum != 0) {
-					printf("Error Status %d in clEnqueueNDRangeKerneltestkernel\n", errNum);
-					exit(-1);
-				}
-				clFinish(commandQueue);
-			}
-		}
+void printvalues(cl_float* arr, size_t len) {
+	printf("len: %lu", len);
+	for (size_t i = 0; i < len; ++i) {
+		if ( i % 8 == 0)
+			printf("\n");
+		printf("%.1f ", arr[i]);
 	}
+	printf("\n\n");
 }
-
+void printvalues(cl_float4* arr, size_t len) {
+	printf("len: %lu", len);
+	for (size_t i = 0; i < len; ++i) {
+		if ( i % 2 == 0)
+			printf("\n");
+		printf("%.1f ", arr[i].x);
+		printf("%.1f ", arr[i].y);
+		printf("%.1f ", arr[i].z);
+		printf("%.1f ", arr[i].w);
+	}
+	printf("\n\n");
+}
 
 
 int main()
 {
-	const size_t IN_DIM		= 58443;
-	const size_t OUT_DIM		= 58000;
-	const size_t WEIGHTS_DIM  = 108;
+	const size_t IN_DIM		= 14400;
+	const size_t OUT_DIM		= 38400;
+	const size_t WEIGHTS_DIM  = sizeof(conv2d_11_internal_1_W) / sizeof(conv2d_11_internal_1_W[0]);
 
-	const size_t IN_DIM4		= 58444 / 4;
-	const size_t OUT_DIM4		= 58000 / 4;
-	const size_t WEIGHTS_DIM4 = 108 / 4;
+	if (IN_DIM % 4 != 0 || OUT_DIM % 4 != 0 || WEIGHTS_DIM % 4 != 0) {
+		fprintf(stderr, "wrong Dimensions\n");
+		exit(1);
+	}
+
+	const size_t OUT_DIM4		= OUT_DIM / 4;
+	const size_t WEIGHTS_DIM4 = WEIGHTS_DIM / 4;
 
 	cl_float in[IN_DIM];
 	cl_float out[OUT_DIM];
 	cl_float weights[WEIGHTS_DIM];
 
-	cl_float4 in4[IN_DIM4]; 
 	cl_float4 out4[OUT_DIM4];
 	cl_float4 weights4[WEIGHTS_DIM4];
 
@@ -499,67 +518,141 @@ int main()
 		in[i] = static_cast<cl_float>(i);
 	}
 	for (int i = 0; i < WEIGHTS_DIM; ++i) {
-		weights[i] = static_cast<cl_float>(i);
+		weights[i] = static_cast<cl_float>(i + 1);
 	}
 
-	for (int i = 0; i < IN_DIM4; i+=4) {
-		in4[i/4] = (cl_float4) {static_cast<cl_float>(i), static_cast<cl_float>(i+1), static_cast<cl_float>(i+2), static_cast<cl_float>(i+3)};
-	}
 	for (int i = 0; i < OUT_DIM4; i+=4) {
-		weights4[i/4] = (cl_float4) {static_cast<cl_float>(i), static_cast<cl_float>(i+1), static_cast<cl_float>(i+2), static_cast<cl_float>(i+3)};
+		weights4[i/4] = (cl_float4) {static_cast<cl_float>(i + 1), static_cast<cl_float>(i+2), static_cast<cl_float>(i+3), static_cast<cl_float>(i+4)};
 	}
 
 	if (initOcl()) {
 		fprintf(stderr,"Failed InitOcl\n");
 		exit(-1);
 	}
-	//initclmemobjects();
-
-	for (int j = 0; j < 10; ++j) {
+	char t[] = "cpu__";
+	char* name = t;
+	CNN_STOPWATCH(name) {
+		for (int k = 0; k < 1; ++k) {
+			for (size_t i = 0; i < OUT_DIM; i++) {
+				out[i] = (cl_float) 0; 
+			}
+			conv2dcpu(in, out, weights);
+		}
+	}
+	printf("CPU __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name, 0), min(name, 0) / IN_DIM);
+	char temp[] = "conv"; 
+	name = temp;
+	for (int k = 0; k < 10; ++k) {
 		cl_mem cl_in;
 		cl_mem cl_weights;
 		cl_mem cl_out;
-		cl_in = clCreateBuffer(context,
-				CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-				IN_DIM * sizeof(cl_float), in, &errNum);
-		cl_weights = clCreateBuffer(context,
-				CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-				WEIGHTS_DIM * sizeof(cl_float), weights, &errNum);
-		cl_out = clCreateBuffer(context,
-				CL_MEM_READ_WRITE,
-				OUT_DIM * sizeof(cl_float), NULL, &errNum);
-		// reset out
-		for (size_t i = 0; i < OUT_DIM; i++) {
-			out[i] = 0.0f;
-		}
-		char name[] = "sepconv_serial";
+		CNN_STOPWATCH(name) {
+			// reset out
+			for (size_t i = 0; i < OUT_DIM; i++) {
+				out[i] = (cl_float) 0; 
+			}
+			cl_in = clCreateBuffer(context,
+					CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+					IN_DIM * sizeof(cl_float), in, &errNum);
+			cl_weights = clCreateBuffer(context,
+					CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+					WEIGHTS_DIM * sizeof(cl_float), weights, &errNum);
+			cl_out = clCreateBuffer(context,
+					CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+					OUT_DIM * sizeof(cl_float), out, &errNum);
 
-		// run function
-		CNN_STOPWATCH(std::to_string(IN_DIM).c_str()) {
+			// run function
 			cnn(cl_in, cl_weights, cl_out, IN_DIM, &program, name);
+			// get memory from gpu
+			//printf("sizeof(out): %d OUT_DIM * sizeof(cl_float): %d", sizeof(out), OUT_DIM * sizeof(cl_float));
+			errNum = clEnqueueReadBuffer(commandQueue,
+					cl_out,
+					CL_TRUE,
+					0,
+					sizeof(out),
+					out,
+					0,
+					NULL,
+					NULL);
+			if (errNum != 0) {
+				printf("Error Status %d in clEnqueueReadBuffer\n", errNum);
+				exit(-1);
+			}
 		}
-		// get memory from gpu
-		errNum = clEnqueueReadBuffer(commandQueue,
-				cl_out,
-				CL_TRUE,
-				0,
-				OUT_DIM * sizeof(float),
-				out,
-				0,
-				NULL,
-				NULL);
-		if (errNum != 0) {
-			printf("Error Status %d in clEnqueueReadBuffer\n", errNum);
-			exit(-1);
-		}
+
+		//printf("\n\nOUT");
+		//printvalues(out, OUT_DIM);
 		clReleaseMemObject(cl_in);
 		clReleaseMemObject(cl_out);
 	}
-		//printf("F4IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu ", IN_DIM, min(IN_DIM, 1), min(IN_DIM, 1) / IN_DIM);
-		printf("__IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(IN_DIM, 0), min(IN_DIM, 0) / IN_DIM);
+	printf("GPU __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name, 0), min(name, 0) / IN_DIM);
+	//printf("\n\n");
+
+	char temp2[] = "float4conv"; 
+	name = temp2;
+	for (int k = 0; k < 10; ++k) {
+		cl_mem cl_in;
+		cl_mem cl_weights;
+		cl_mem cl_out;
+		char name[] = "float4conv";
+		CNN_STOPWATCH(name) {
+			// reset out
+			for (size_t i = 0; i < OUT_DIM4; i++) {
+				out4[i] = (cl_float4) {static_cast<cl_float>(0), static_cast<cl_float>(0), static_cast<cl_float>(0), static_cast<cl_float>(0)};
+			}
+			cl_in = clCreateBuffer(context,
+					CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+					IN_DIM * sizeof(cl_float), in, &errNum);
+			cl_weights = clCreateBuffer(context,
+					CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+					WEIGHTS_DIM4 * sizeof(cl_float4), weights4, &errNum);
+			cl_out = clCreateBuffer(context,
+					CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+					OUT_DIM4 * sizeof(cl_float4), out4, &errNum);
+
+			// run function
+			cnn(cl_in, cl_weights, cl_out, IN_DIM, &program, name);
+			// get memory from gpu
+			//printf("sizeof(out4): %d OUT_DIM4 * sizeof(cl_float4): %d", sizeof(out4), OUT_DIM4 * sizeof(cl_float4));
+			errNum = clEnqueueReadBuffer(commandQueue,
+					cl_out,
+					CL_TRUE,
+					0,
+					sizeof(out4),
+					out4,
+					0,
+					NULL,
+					NULL);
+			if (errNum != 0) {
+				printf("Error Status %d in clEnqueueReadBuffer\n", errNum);
+				exit(-1);
+			}
+		}
+		//printf("\n\nFLOAT4OUT");
+		//printvalues(out4, OUT_DIM4);
+		clReleaseMemObject(cl_in);
+		clReleaseMemObject(cl_out);
+	}
+	printf("GPUFloat4 __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name, 0), min(name, 0) / IN_DIM);
+
+	//printf("F4IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu ", IN_DIM, min(IN_DIM, 1), min(IN_DIM, 1) / IN_DIM);
 
 	//printf("time: %d nano seconds\nsize: %d\naverage: %d nano seconds/run\n", total_elapsed, IN_DIM - 1, total_elapsed/IN_DIM);
 	return 0;
+}
+
+int min(char* s1, int f4) {
+	int min {INT32_MAX};
+	int avg = 0;
+	for (size_t i = 0; i < stopwatch_timings[s1].size(); i+=1) {
+		min = min <= stopwatch_timings[s1][i] ? min : stopwatch_timings[s1][i];
+	}
+	for (size_t i = 0; i < stopwatch_timings[s1].size(); i+=1) {
+		avg += stopwatch_timings[s1][i];
+	}
+	avg /= stopwatch_timings[s1].size();
+	return avg;
+	return min;
 }
 
 int min(int index, int f4) {
