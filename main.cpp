@@ -9,6 +9,7 @@
 #else
 #define FORCE_INLINE /* inline */
 #endif
+#define DEBUGOPENCL 0
 
 #include <iostream>
 #include <map>
@@ -220,13 +221,15 @@ int chooseDevice(cl_platform_id* platform_ids,
 		std::cerr << "Failed to find OpenCL device info " << "." << std::endl;
 		return -1;
 	}
-	std::cout << "------------\n" << "CPU:" << CL_DEVICE_TYPE_CPU << "\n------------" <<std::endl;
-	std::cout << "------------\n" << "GPU:" << CL_DEVICE_TYPE_GPU << "\n------------" <<std::endl;
-	std::cout << "------------\n" << info[0] << "------------" <<std::endl;
+	if (DEBUGOPENCL) {
+		std::cout << "------------\n" << "CPU:" << CL_DEVICE_TYPE_CPU << "\n------------" <<std::endl;
+		std::cout << "------------\n" << "GPU:" << CL_DEVICE_TYPE_GPU << "\n------------" <<std::endl;
+		std::cout << "------------\n" << info[0] << "------------" <<std::endl;
 
-	std::cout << "Device ids:\n";
-	for (int i = 0; i < numDevices; i++)  {
-		std::cout << i << ": " << device_ids[i] << std::endl;
+		std::cout << "Device ids:\n";
+		for (int i = 0; i < numDevices; i++)  {
+			std::cout << i << ": " << device_ids[i] << std::endl;
+		}
 	}
 	*device_id = device_ids[chosendevice];
 	return 0;
@@ -677,12 +680,13 @@ int max(const char* s1) {
 }
 
 void printtimings(std::string& name, size_t IN_DIM) {
-	printf("%s min __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n",
-			name.c_str(), IN_DIM, min(name.c_str()), min(name.c_str()) / IN_DIM);
-	printf("%s avg __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n",
-			name.c_str(), IN_DIM, avg(name.c_str()), avg(name.c_str()) / IN_DIM);
-	printf("%s max __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n",
-			name.c_str(), IN_DIM, max(name.c_str()), max(name.c_str()) / IN_DIM);
+	printf("%s\n", name.c_str());
+//	printf("MIN #ELEMENTS: %05lu TIME: %07d TIME_PER_ELEMENT: %05lu\n",
+//			 IN_DIM, min(name.c_str()), min(name.c_str()) / IN_DIM);
+	printf("AVG #ELEMENTS: %05lu TIME: %07d TIME_PER_ELEMENT: %05lu\n",
+			 IN_DIM, avg(name.c_str()), avg(name.c_str()) / IN_DIM);
+//	printf("MAX #ELEMENTS: %05lu TIME: %07d TIME_PER_ELEMENT: %05lu\n",
+//			 IN_DIM, max(name.c_str()), max(name.c_str()) / IN_DIM);
 }
 
 int calc(int index, int f4) {
