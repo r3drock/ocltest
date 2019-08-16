@@ -76,9 +76,11 @@ cl_command_queue commandQueue;
 cl_program program;
 cl_program programfloat4;
 
-int avg(char* s1);
-int min(char* s1);
+int avg(const char* s1);
+int min(const char* s1);
+int max(const char* s1);
 int calc(int index, int f4);
+void printtimings(std::string& name, size_t IN_DIM);
 
 void conv2dcpu(float* in_, float* out_, float* weights_)
 {
@@ -412,7 +414,7 @@ int initOcl()
 }
 
 
-int createKernel(cl_program  *program, cl_kernel *kernel, char kernelName[])
+int createKernel(cl_program  *program, cl_kernel *kernel, const char kernelName[])
 {
 	*kernel = clCreateKernel(*program, kernelName, &errNum);
 	if (!*kernel || errNum != CL_SUCCESS)
@@ -423,7 +425,7 @@ int createKernel(cl_program  *program, cl_kernel *kernel, char kernelName[])
 	return 0;
 }
 
-void cnn(cl_mem in_0, cl_mem weights, cl_mem out_0, size_t dim, cl_program * prog, char* name)
+void cnn(cl_mem in_0, cl_mem weights, cl_mem out_0, size_t dim, cl_program * prog, const char* name)
 {
 	{
 		{
@@ -530,9 +532,8 @@ int main()
 		fprintf(stderr,"Failed InitOcl\n");
 		exit(-1);
 	}
-	char t[] = "cpu__";
-	char* name = t;
-	CNN_STOPWATCH(name) {
+	std::string name("cpu");
+	CNN_STOPWATCH(name.c_str()) {
 		for (int k = 0; k < 1; ++k) {
 			for (size_t i = 0; i < OUT_DIM; i++) {
 				out[i] = (cl_float) 0; 
@@ -540,19 +541,22 @@ int main()
 			conv2dcpu(in, out, weights);
 		}
 	}
-	printf("CPU min __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name), min(name) / IN_DIM);
-	printf("CPU avg __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name), min(name) / IN_DIM);
-	char temp[] = "conv"; 
-	name = temp;
+	printtimings(name, IN_DIM);
+
+	name.assign("conv"); 
+	std::string stopwatch_name_create_Buffers(name);
+	std::string stopwatch_name_cnn(name);
+	std::string stopwatch_name_read_Buffer(name);
+	stopwatch_name_create_Buffers += " create Buffers";
+	stopwatch_name_cnn += " cnn";
+	stopwatch_name_read_Buffer += " read Buffer";
 	for (int k = 0; k < 10; ++k) {
-		cl_mem cl_in;
-		cl_mem cl_weights;
-		cl_mem cl_out;
-		CNN_STOPWATCH(name) {
-			// reset out
-			for (size_t i = 0; i < OUT_DIM; i++) {
-				out[i] = (cl_float) 0; 
-			}
+		cl_mem cl_in, cl_weights, cl_out;
+		// reset out
+		for (size_t i = 0; i < OUT_DIM; i++) {
+			out[i] = (cl_float) 0; 
+		}
+		CNN_STOPWATCH(stopwatch_name_create_Buffers.c_str()) {
 			cl_in = clCreateBuffer(context,
 					CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
 					IN_DIM * sizeof(cl_float), in, &errNum);
@@ -562,20 +566,17 @@ int main()
 			cl_out = clCreateBuffer(context,
 					CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
 					OUT_DIM * sizeof(cl_float), out, &errNum);
+		}
 
+		CNN_STOPWATCH(stopwatch_name_cnn.c_str()) {
 			// run function
-			cnn(cl_in, cl_weights, cl_out, IN_DIM, &program, name);
+			cnn(cl_in, cl_weights, cl_out, IN_DIM, &program, name.c_str());
+		}
+		CNN_STOPWATCH(stopwatch_name_read_Buffer.c_str()) {
 			// get memory from gpu
 			//printf("sizeof(out): %d OUT_DIM * sizeof(cl_float): %d", sizeof(out), OUT_DIM * sizeof(cl_float));
-			errNum = clEnqueueReadBuffer(commandQueue,
-					cl_out,
-					CL_TRUE,
-					0,
-					sizeof(out),
-					out,
-					0,
-					NULL,
-					NULL);
+			errNum = clEnqueueReadBuffer(commandQueue, cl_out, CL_TRUE, 0,
+					sizeof(out), out, 0, NULL, NULL);
 			if (errNum != 0) {
 				printf("Error Status %d in clEnqueueReadBuffer\n", errNum);
 				exit(-1);
@@ -586,23 +587,28 @@ int main()
 		//printvalues(out, OUT_DIM);
 		clReleaseMemObject(cl_in);
 		clReleaseMemObject(cl_out);
-	}
-	printf("GPU min __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name), min(name) / IN_DIM);
-	printf("GPU avg __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, avg(name), avg(name) / IN_DIM);
-	//printf("\n\n");
+	} 
+	printtimings(stopwatch_name_create_Buffers, IN_DIM);
+	printtimings(stopwatch_name_cnn, IN_DIM);
+	printtimings(stopwatch_name_read_Buffer, IN_DIM);
 
-	char temp2[] = "float4conv"; 
-	name = temp2;
+	name.assign("float4conv");
+	stopwatch_name_create_Buffers.assign(name);
+	stopwatch_name_cnn.assign(name);
+	stopwatch_name_read_Buffer.assign(name);
+	stopwatch_name_create_Buffers += " create Buffers";
+	stopwatch_name_cnn += " cnn";
+	stopwatch_name_read_Buffer += " read Buffer";
+
 	for (int k = 0; k < 10; ++k) {
 		cl_mem cl_in;
 		cl_mem cl_weights;
 		cl_mem cl_out;
-		char name[] = "float4conv";
-		CNN_STOPWATCH(name) {
-			// reset out
-			for (size_t i = 0; i < OUT_DIM4; i++) {
-				out4[i] = (cl_float4) {static_cast<cl_float>(0), static_cast<cl_float>(0), static_cast<cl_float>(0), static_cast<cl_float>(0)};
-			}
+		// reset out
+		for (size_t i = 0; i < OUT_DIM4; i++) {
+			out4[i] = (cl_float4) {static_cast<cl_float>(0), static_cast<cl_float>(0), static_cast<cl_float>(0), static_cast<cl_float>(0)};
+		}
+		CNN_STOPWATCH(stopwatch_name_create_Buffers.c_str()) {
 			cl_in = clCreateBuffer(context,
 					CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
 					IN_DIM * sizeof(cl_float), in, &errNum);
@@ -612,20 +618,18 @@ int main()
 			cl_out = clCreateBuffer(context,
 					CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
 					OUT_DIM4 * sizeof(cl_float4), out4, &errNum);
+		}
 
+		CNN_STOPWATCH(stopwatch_name_cnn.c_str()) {
 			// run function
-			cnn(cl_in, cl_weights, cl_out, IN_DIM, &program, name);
+			cnn(cl_in, cl_weights, cl_out, IN_DIM, &program, name.c_str());
+		}
+
+		CNN_STOPWATCH(stopwatch_name_read_Buffer.c_str()) {
 			// get memory from gpu
 			//printf("sizeof(out4): %d OUT_DIM4 * sizeof(cl_float4): %d", sizeof(out4), OUT_DIM4 * sizeof(cl_float4));
-			errNum = clEnqueueReadBuffer(commandQueue,
-					cl_out,
-					CL_TRUE,
-					0,
-					sizeof(out4),
-					out4,
-					0,
-					NULL,
-					NULL);
+			errNum = clEnqueueReadBuffer(commandQueue, cl_out, CL_TRUE, 0,
+					sizeof(out4), out4, 0, NULL, NULL);
 			if (errNum != 0) {
 				printf("Error Status %d in clEnqueueReadBuffer\n", errNum);
 				exit(-1);
@@ -636,8 +640,9 @@ int main()
 		clReleaseMemObject(cl_in);
 		clReleaseMemObject(cl_out);
 	}
-	printf("GPUFloat4 min __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name), min(name) / IN_DIM);
-	printf("GPUFloat4 avg __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, avg(name), avg(name) / IN_DIM);
+	printtimings(stopwatch_name_create_Buffers, IN_DIM);
+	printtimings(stopwatch_name_cnn, IN_DIM);
+	printtimings(stopwatch_name_read_Buffer, IN_DIM);
 
 	//printf("F4IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu ", IN_DIM, min(IN_DIM, 1), min(IN_DIM, 1) / IN_DIM);
 
@@ -645,20 +650,39 @@ int main()
 	return 0;
 }
 
-int avg(char* s1) {
+int avg(const char* s1) {
 	int avg {0};
 	for (size_t i = 0; i < stopwatch_timings[s1].size(); i+=1) {
 		avg += stopwatch_timings[s1][i];
 	}
 	avg /= stopwatch_timings[s1].size();
+	assert(avg > 0);
 	return avg;
 }
-int min(char* s1) {
+int min(const char* s1) {
 	int min {INT32_MAX};
 	for (size_t i = 0; i < stopwatch_timings[s1].size(); i+=1) {
 		min = min <= stopwatch_timings[s1][i] ? min : stopwatch_timings[s1][i];
 	}
+	assert(min > 0);
 	return min;
+}
+int max(const char* s1) {
+	int max {INT32_MIN};
+	for (size_t i = 0; i < stopwatch_timings[s1].size(); i+=1) {
+		max = max >= stopwatch_timings[s1][i] ? max : stopwatch_timings[s1][i];
+	}
+	assert(max > 0);
+	return max;
+}
+
+void printtimings(std::string& name, size_t IN_DIM) {
+	printf("%s min __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n",
+			name.c_str(), IN_DIM, min(name.c_str()), min(name.c_str()) / IN_DIM);
+	printf("%s avg __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n",
+			name.c_str(), IN_DIM, avg(name.c_str()), avg(name.c_str()) / IN_DIM);
+	printf("%s max __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n",
+			name.c_str(), IN_DIM, max(name.c_str()), max(name.c_str()) / IN_DIM);
 }
 
 int calc(int index, int f4) {
