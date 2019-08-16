@@ -76,8 +76,9 @@ cl_command_queue commandQueue;
 cl_program program;
 cl_program programfloat4;
 
-int min(char* s1, int f4);
-int min(int index, int f4);
+int avg(char* s1);
+int min(char* s1);
+int calc(int index, int f4);
 
 void conv2dcpu(float* in_, float* out_, float* weights_)
 {
@@ -539,7 +540,8 @@ int main()
 			conv2dcpu(in, out, weights);
 		}
 	}
-	printf("CPU __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name, 0), min(name, 0) / IN_DIM);
+	printf("CPU min __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name), min(name) / IN_DIM);
+	printf("CPU avg __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name), min(name) / IN_DIM);
 	char temp[] = "conv"; 
 	name = temp;
 	for (int k = 0; k < 10; ++k) {
@@ -585,7 +587,8 @@ int main()
 		clReleaseMemObject(cl_in);
 		clReleaseMemObject(cl_out);
 	}
-	printf("GPU __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name, 0), min(name, 0) / IN_DIM);
+	printf("GPU min __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name), min(name) / IN_DIM);
+	printf("GPU avg __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, avg(name), avg(name) / IN_DIM);
 	//printf("\n\n");
 
 	char temp2[] = "float4conv"; 
@@ -633,7 +636,8 @@ int main()
 		clReleaseMemObject(cl_in);
 		clReleaseMemObject(cl_out);
 	}
-	printf("GPUFloat4 __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name, 0), min(name, 0) / IN_DIM);
+	printf("GPUFloat4 min __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, min(name), min(name) / IN_DIM);
+	printf("GPUFloat4 avg __IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu\n", IN_DIM, avg(name), avg(name) / IN_DIM);
 
 	//printf("F4IN_DIM: %4.lu TIME: %7.d TIME_PER_ELEMENT: %5.lu ", IN_DIM, min(IN_DIM, 1), min(IN_DIM, 1) / IN_DIM);
 
@@ -641,21 +645,23 @@ int main()
 	return 0;
 }
 
-int min(char* s1, int f4) {
-	int min {INT32_MAX};
-	int avg = 0;
-	for (size_t i = 0; i < stopwatch_timings[s1].size(); i+=1) {
-		min = min <= stopwatch_timings[s1][i] ? min : stopwatch_timings[s1][i];
-	}
+int avg(char* s1) {
+	int avg {0};
 	for (size_t i = 0; i < stopwatch_timings[s1].size(); i+=1) {
 		avg += stopwatch_timings[s1][i];
 	}
 	avg /= stopwatch_timings[s1].size();
 	return avg;
+}
+int min(char* s1) {
+	int min {INT32_MAX};
+	for (size_t i = 0; i < stopwatch_timings[s1].size(); i+=1) {
+		min = min <= stopwatch_timings[s1][i] ? min : stopwatch_timings[s1][i];
+	}
 	return min;
 }
 
-int min(int index, int f4) {
+int calc(int index, int f4) {
 	int min {INT32_MAX};
 	int avg = 0;
 	std::string s;
