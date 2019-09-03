@@ -527,9 +527,9 @@ int main()
 		weights[i] = static_cast<cl_float>(i + 1);
 	}
 
-	for (int i = 0; i < OUT_DIM4; i+=4) {
-		weights4[i/4] = (cl_float4) {static_cast<cl_float>(i + 1), static_cast<cl_float>(i+2), static_cast<cl_float>(i+3), static_cast<cl_float>(i+4)};
-	}
+	/* for (int i = 0; i < OUT_DIM4; i+=4) { */
+		/* weights4[i/4] = (cl_float4) {static_cast<cl_float>(i + 1), static_cast<cl_float>(i+2), static_cast<cl_float>(i+3), static_cast<cl_float>(i+4)}; */
+	/* } */
 
 	if (initOcl()) {
 		fprintf(stderr,"Failed InitOcl\n");
@@ -604,12 +604,10 @@ int main()
 	stopwatch_name_read_Buffer += " read Buffer";
 
 	for (int k = 0; k < 10; ++k) {
-		cl_mem cl_in;
-		cl_mem cl_weights;
-		cl_mem cl_out;
+		cl_mem cl_in, cl_weights, cl_out;
 		// reset out
-		for (size_t i = 0; i < OUT_DIM4; i++) {
-			out4[i] = (cl_float4) {static_cast<cl_float>(0), static_cast<cl_float>(0), static_cast<cl_float>(0), static_cast<cl_float>(0)};
+		for (size_t i = 0; i < OUT_DIM; i++) {
+			out[i] = (cl_float) 0; 
 		}
 		CNN_STOPWATCH(stopwatch_name_create_Buffers.c_str()) {
 			cl_in = clCreateBuffer(context,
@@ -617,10 +615,10 @@ int main()
 					IN_DIM * sizeof(cl_float), in, &errNum);
 			cl_weights = clCreateBuffer(context,
 					CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-					WEIGHTS_DIM4 * sizeof(cl_float4), weights4, &errNum);
+					WEIGHTS_DIM4 * sizeof(cl_float4), reinterpret_cast<cl_float4*>(weights), &errNum);
 			cl_out = clCreateBuffer(context,
 					CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-					OUT_DIM4 * sizeof(cl_float4), out4, &errNum);
+					OUT_DIM4 * sizeof(cl_float4), reinterpret_cast<cl_float4*>(out), &errNum);
 		}
 
 		CNN_STOPWATCH(stopwatch_name_cnn.c_str()) {
@@ -632,7 +630,7 @@ int main()
 			// get memory from gpu
 			//printf("sizeof(out4): %d OUT_DIM4 * sizeof(cl_float4): %d", sizeof(out4), OUT_DIM4 * sizeof(cl_float4));
 			errNum = clEnqueueReadBuffer(commandQueue, cl_out, CL_TRUE, 0,
-					sizeof(out4), out4, 0, NULL, NULL);
+					sizeof(out4), reinterpret_cast<cl_float4*>(out), 0, NULL, NULL);
 			if (errNum != 0) {
 				printf("Error Status %d in clEnqueueReadBuffer\n", errNum);
 				exit(-1);
